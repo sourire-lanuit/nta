@@ -22,4 +22,8 @@ std::vector<int> factor_base(uint64_t n, int bound, int k = 10);
 std::vector<uint64_t> fraction_sqrt(uint64_t n, int limit = 200);
 bool b_smooth(long long val, const std::vector<int>& base, std::map<int, int>& factors);
 
+void print_factor(uint64_t factor, const std::string& alg_name);
+
+void canonical(uint64_t n);
+
 #endif 
