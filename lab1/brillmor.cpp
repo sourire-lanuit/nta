@@ -16,7 +16,7 @@ uint64_t is_sqrt(uint64_t n) {
     return x;
 }
 
-std::vector<int> factor_base(uint64_t n, int bound, int k = 10) {
+std::vector<int> factor_base(uint64_t n, int bound, int k) {
     std::vector<int> base;
     base.push_back(-1);
     for (int p = 2; p <= bound; ++p) {
@@ -28,7 +28,7 @@ std::vector<int> factor_base(uint64_t n, int bound, int k = 10) {
     }
     return base;
 }
-std::vector<uint64_t> fraction_sqrt(uint64_t n, int lim = 200) {
+std::vector<uint64_t> fraction_sqrt(uint64_t n, int lim) {
     uint64_t u = 0, v = 1, a0 = is_sqrt(n);
     uint64_t a = a0;
     std::vector<uint64_t> terms;
