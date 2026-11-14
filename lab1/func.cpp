@@ -22,3 +22,14 @@ uint64_t gcd(uint64_t a, uint64_t b) {
     }
     return a;
 }
+
+uint64_t is_sqrt(uint64_t n) {
+    if (n == 0) return 0;
+    uint64_t x = n;
+    uint64_t y = (x + 1) / 2;
+    while (y < x) {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    return x;
+}

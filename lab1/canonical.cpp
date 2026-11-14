@@ -1,72 +1,89 @@
 #include "Header.h"
-#include <iostream>
-#include <chrono>
 #include <ctime>
-#include <iomanip>
+#include <sstream>
 
-
-void print_factor(uint64_t factor, const std::string& alg_name) {
-    auto now = std::chrono::system_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-    time_t now_time = std::chrono::system_clock::to_time_t(now);
-    std::cout << " Знайдено дільник: " << factor << " | Алгоритм: " << alg_name << " | Час: " << ms << " мс\n";
+std::string timestamp() {
+    using namespace std::chrono;
+    auto now = system_clock::now();
+    auto ms = duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000;
+    std::time_t t = system_clock::to_time_t(now);
+    std::tm tm_{};
+#ifdef _WIN32
+    localtime_s(&tm_, &t);
+#else
+    localtime_r(&t, &tm_);
+#endif
+    std::ostringstream os;
+    os << std::put_time(&tm_, "%Y-%m-%d %H:%M:%S") << '.' << std::setw(3) << std::setfill('0') << ms;
+    return os.str();
 }
 
-void canonical(uint64_t n) {
-    auto start = std::chrono::system_clock::now();
-    auto start_ms = std::chrono::duration_cast<std::chrono::milliseconds>(start.time_since_epoch()).count();
-    time_t start_time = std::chrono::system_clock::to_time_t(start);
-    std::cout << "\nПочаток роботи алгоритму. Час: " << start_ms << " мс\n";
+void print_factor(uint64_t factor, const std::string& alg_name) {
+    std::cout << "Знайдено дільник: " << factor << "        | Алгоритм: " << alg_name << "       | Час: " << timestamp() << "\n";
+}
+
+
+static bool factorize(uint64_t n, std::vector<uint64_t>& res) {
+    if (n == 1) return true;
+    if (miller_rabin(n)) {
+        print_factor(n, "Тест Міллера-Рабіна");
+        res.push_back(n);
+        return true;
+    }
+
+    uint64_t d = trial_division(n);
+    if (d != 1 && d != n) {
+        print_factor(d, "Метод пробних ділень");
+        res.push_back(d);
+        return factorize(n / d, res);
+    }
+
+    d = pollard(n);
+    if (d != 1 && d != n) {
+        print_factor(d, "р-метод Полларда");
+        return factorize(d, res) && factorize(n / d, res);
+    }
+
+    d = brillhart_morrison(n);
+    if (d != 1 && d != n) {
+        print_factor(d, "Метод Брілхарта-Моррісона");
+        return factorize(d, res) && factorize(n / d, res);
+    }
+
+    return false;
+}
+
+bool canonical(uint64_t n) {
+    if (n < 2) {
+        std::cout << "Канонічний розклад визначено для n >= 2\n";
+        return false;
+    }
+    auto t0 = std::chrono::steady_clock::now();
+    std::cout << "\nПочаток роботи алгоритму. Час: " << timestamp() << "\n";
     std::cout << "Пошук канонічного розкладу числа: " << n << "\n";
 
     std::vector<uint64_t> factors;
-    
-    auto process = [&](auto self, uint64_t current_n) -> void {
-        if (current_n == 1) return;
-        if (miller_rabin(current_n)) {
-            factors.push_back(current_n);
-            print_factor(current_n, "Міллер-Рабін: ");
-            return;
-        }
+    bool ok = factorize(n, factors);
 
-        uint64_t factor = trial_division(current_n);
-        if (factor != 1) {
-            factors.push_back(factor);
-            print_factor(factor, "Пробні ділення: ");
-            self(self, current_n / factor);
-            return;
-        }
+    std::cout << "Кінець роботи алгоритму. Час: " << timestamp() << "\n";
+    double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    std::cout << "Всього витрачено часу: " << ms << " мс\n";
 
-        factor = pollard(current_n);
-        if (factor != 1 && factor != current_n) {
-            factors.push_back(factor);
-            print_factor(factor, "р-метод Полларда: ");
-            self(self, current_n / factor);
-            return;
-        }
+    if (!ok) {
+        std::cout << "канонічний розклад не знайдено\n";
+        return false;
+    }
 
-        factor = brillhart_morrison(current_n);
-        if (factor != 1 && factor != current_n) {
-            factors.push_back(factor);
-            print_factor(factor, "Брілхарт-Моррісон: ");
-            self(self, current_n / factor);
-            return;
-        }
-
-        std::cout << " число не знайдено\n";
-    };
-
-    process(process, n);
-
-    auto end = std::chrono::system_clock::now();
-    auto end_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end.time_since_epoch()).count();
-    time_t end_time = std::chrono::system_clock::to_time_t(end);
-    std::cout << "this is the end. Час: " << end_ms << " мс\n";
-    std::cout << "Всього витрачено часу: " << end_ms - start_ms << " мс\n";
-    
-    std::cout << "Канонічний розклад: ";
-    for (size_t i = 0; i < factors.size(); ++i) {
-        std::cout << factors[i] << (i == factors.size() - 1 ? "" : " * ");
+    std::sort(factors.begin(), factors.end());
+    std::cout << "Канонічний розклад: " << n << " = ";
+    for (size_t i = 0; i < factors.size();) {
+        size_t j = i;
+        while (j < factors.size() && factors[j] == factors[i]) ++j;
+        if (i) std::cout << " * ";
+        std::cout << factors[i];
+        if (j - i > 1) std::cout << "^" << (j - i);
+        i = j;
     }
     std::cout << "\n";
+    return true;
 }

@@ -1,173 +1,165 @@
 #include "Header.h"
-#include <cmath>
-#include <iostream>
-#include <map>
-#include <chrono>
-#include <algorithm>
 
-uint64_t is_sqrt(uint64_t n) {
-    if (n == 0) return 0;
-    uint64_t x = n;
-    uint64_t y = (x + 1) / 2;
-    while (y < x) {
-        x = y;
-        y = (x + n / x) / 2;
-    }
-    return x;
-}
-
-std::vector<int> factor_base(uint64_t n, int bound, int k) {
+std::vector<int> factor_base(uint64_t n, int bound) {
     std::vector<int> base;
     base.push_back(-1);
-    for (int p = 2; p <= bound; ++p) {
-        if (miller_rabin(p, k)) {
-            if (power_mod(n, (p - 1) / 2, p) == 1) {
-                base.push_back(p);
-            }
-        }
+    std::vector<bool> compos(bound + 1, false);
+    for (long long p = 2; p <= bound; ++p) {
+        if (compos[p]) continue;
+        for (long long j = p * p; j <= bound; j += p) compos[j] = true;
+        if (p == 2 || power_mod(n % p, (p - 1) / 2, p) == 1) base.push_back((int)p);
     }
     return base;
 }
-std::vector<uint64_t> fraction_sqrt(uint64_t n, int lim) {
-    uint64_t u = 0, v = 1, a0 = is_sqrt(n);
-    uint64_t a = a0;
-    std::vector<uint64_t> terms;
-    terms.push_back(a0);
-    
-    for (int i = 0; i < lim; ++i) {
-        u = v * a - u;
-        v = (n - u * u) / v;
-        if (v == 0) break;
-        a = (a0 + u) / v;
-        terms.push_back(a);
+
+bool b_smooth(uint64_t q, const std::vector<int>& base, std::vector<std::pair<int,int>>& expo) {
+    expo.clear();
+    for (size_t i = 1; i < base.size() && q > 1; ++i) {
+        uint64_t p = (uint64_t)base[i];
+        if (q % p) continue;
+        int e = 0;
+        while (q % p == 0) { q /= p; ++e; }
+        expo.push_back({(int)i, e});
     }
-    return terms;
+    return q == 1;
 }
 
-bool b_smooth(long long val, const std::vector<int>& base, std::map<int, int>& factors) {
-    factors.clear();
-    long long temp = val;
-    
-    if (temp < 0) {
-        if (find(base.begin(), base.end(), -1) != base.end()) {
-            factors[-1] = 1;
-        }
-        temp = -temp;
-    }
+typedef std::vector<uint64_t> Bits;
 
-    for (int p : base) {
-        if (p == -1) continue;
-        while (temp % p == 0) {
-            temp /= p;
-            factors[p]++;
-        }
-    }
-    return temp == 1;
+static void xor_into(Bits& a, const Bits& b) {
+    if (a.size() < b.size()) a.resize(b.size(), 0);
+    for (size_t i = 0; i < b.size(); ++i) a[i] ^= b[i];
+}
+static void set_bit(Bits& a, size_t i) {
+    if (a.size() <= i / 64) a.resize(i / 64 + 1, 0);
+    a[i / 64] |= (1ULL << (i % 64));
+}
+static int lowest_bit(const Bits& a) {
+    for (size_t i = 0; i < a.size(); ++i)
+        if (a[i]) return (int)(i * 64 + __builtin_ctzll(a[i]));
+    return -1;
 }
 
-uint64_t brillhart_morrison(uint64_t n) {
-    auto start_time = std::chrono::system_clock::now();
-    double max_a = 6.0;
-    double step = 0.25;
-    double time_limit = 60.0;
-    double a_val = 1.0 / sqrt(2.0); 
+struct Relation {
+    uint64_t A; 
+    std::vector<std::pair<int,int>> expo;
+};
 
-    while (a_val <= max_a) {
-        std::chrono::duration<double> elapsed = std::chrono::system_clock::now() - start_time;
-        if (elapsed.count() > time_limit) {
-            std::cout << "МБМ не знайшов дільник за відведений час (" << time_limit << " с).\n";
-            return 1;
+static uint64_t find_solution(const Bits& h, const std::vector<Relation>& rels, const std::vector<int>& base, uint64_t n) {
+    std::vector<long long> gamma(base.size(), 0);
+    uint64_t X = 1;
+    for (size_t w = 0; w < h.size(); ++w) {
+        uint64_t word = h[w];
+        while (word) {
+            int b = __builtin_ctzll(word);
+            word &= word - 1;
+            const Relation& r = rels[w * 64 + b];
+            X = mul_mod(X, r.A, n);
+            for (auto& pe : r.expo) gamma[pe.first] += pe.second;
         }
+    }
+    uint64_t Y = 1;
+    for (size_t j = 1; j < base.size(); ++j) {
+        if (gamma[j] >= 2) Y = mul_mod(Y, power_mod((uint64_t)base[j], (uint64_t)(gamma[j] / 2), n), n);
+    }
+    if (X == Y || X == (n - Y) % n) return 1;
+    uint64_t diff = (X >= Y) ? (X - Y) : (Y - X);
+    uint64_t d = gcd(diff, n);
+    if (d > 1 && d < n) return d;
+    d = gcd((uint64_t)(((unsigned __int128)X + Y) % n), n);
+    if (d > 1 && d < n) return d;
+    return 1;
+}
 
-        double ln_n = log(n);
-        double ln_ln_n = log(ln_n);
-        int L = (int)exp(a_val * sqrt(ln_n * ln_ln_n));
-        
-        std::vector<int> base = factor_base(n, L, 10);
-        std::vector<uint64_t> a_seq = fraction_sqrt(n, 300);
-        
-        if (a_seq.size() < 2) return 1;
+uint64_t brillhart_morrison(uint64_t n, double time_limit) {
+    auto start_time = std::chrono::steady_clock::now();
+    auto elapsed = [&]() {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
+    };
 
-        uint64_t b1 = 1;
-        uint64_t b2 = a_seq[1];
-        
-        std::vector<uint64_t> bi_list;
-        std::vector<std::vector<int>> exp_vec;
-        std::map<std::vector<int>, int> last_vec;
+    if (n < 4) return 1;
+    if (n % 2 == 0) return 2;
+    uint64_t a0 = is_sqrt(n);
+    if ((unsigned __int128)a0 * a0 == n) return a0;
 
-        for (size_t i = 2; i < a_seq.size(); ++i) {
-            elapsed = std::chrono::system_clock::now() - start_time;
-            if (elapsed.count() > time_limit) return 1;
+    const double max_a = 6.0, step = 0.25;
+    const double ln_n = std::log((double)n);
+    const double ln_ln_n = std::log(ln_n);
 
-            uint64_t bi = ((__int128)a_seq[i] * b2 + b1) % n;
-            b1 = b2;
-            b2 = bi;
-            
-            uint64_t value = mul_mod(bi, bi, n);
-            
-            std::map<int, int> factors;
-            if (!b_smooth((long long)value, base, factors)) {
-                continue;
-            }
+    for (double a_val = 1.0 / std::sqrt(2.0); a_val <= max_a; a_val += step) {
+        double Ld = std::exp(a_val * std::sqrt(ln_n * ln_ln_n));
+        int L = (int)std::min(Ld, 3.0e6);
+        if (L < 10) L = 10;
 
-            std::vector<int> whole_vec(base.size(), 0);
-            std::vector<int> mod2_vec(base.size(), 0);
-            bool all_zero = true;
+        for (int p = 2; p <= L; ++p)
+            if (n % p == 0 && (uint64_t)p < n) return (uint64_t)p;
 
-            for (size_t j = 0; j < base.size(); ++j) {
-                whole_vec[j] = factors[base[j]];
-                mod2_vec[j] = whole_vec[j] % 2;
-                if (mod2_vec[j] != 0) all_zero = false;
-            }
+        std::vector<int> base = factor_base(n, L);
+        size_t m = base.size();
+        size_t max_terms = 50 * m + 5000;
 
-            if (all_zero) {
-                uint64_t X = bi % n;
-                uint64_t Y = is_sqrt(value) % n;
-                
-                uint64_t delta1 = (X >= Y) ? (X - Y) : (X + (n - Y));
-                uint64_t delta2 = (X + Y) % n;
-                
-                uint64_t d1 = gcd(delta1, n);
-                if (d1 > 1 && d1 < n) return d1;
-                
-                uint64_t d2 = gcd(delta2, n);
-                if (d2 > 1 && d2 < n) return d2;
-                
-                continue;
-            }
+        std::vector<Relation> rels;
+        std::vector<Bits> pivot_vec(m), pivot_hist(m);
+        std::vector<bool> has_pivot(m, false);
+        std::vector<Bits> solutions;
 
-            if (last_vec.find(mod2_vec) != last_vec.end()) {
-                int j = last_vec[mod2_vec];
-                uint64_t X = mul_mod(bi, bi_list[j], n);
-                
-                uint64_t Y_squared = 1;
-                for (size_t k = 0; k < base.size(); ++k) {
-                    int exp_sum = whole_vec[k] + exp_vec[j][k];
-                    uint64_t part = power_mod((uint64_t)base[k], exp_sum / 2, n);
-                    Y_squared = mul_mod(Y_squared, part, n);
+        uint64_t u = 0, v = 1, a = a0;
+        uint64_t A_prev = 1, A_cur = a0 % n;
+
+        for (size_t k = 1; k <= max_terms; ++k) {
+            if ((k & 1023) == 0 && elapsed() > time_limit) return 1;
+
+            u = a * v - u;
+            v = (n - u * u) / v;
+            if (v == 0) break;
+            a = (a0 + u) / v;
+
+            std::vector<std::pair<int,int>> expo;
+            if (b_smooth(v, base, expo)) {
+                Relation r;
+                r.A = A_cur;
+                if (k & 1) r.expo.push_back({0, 1});
+                r.expo.insert(r.expo.end(), expo.begin(), expo.end());
+
+                Bits vec, hist;
+                for (auto& pe : r.expo) if (pe.second & 1) set_bit(vec, pe.first);
+                size_t t = rels.size();
+                rels.push_back(r);
+                set_bit(hist, t);
+
+                while (true) {
+                    int c = lowest_bit(vec);
+                    if (c < 0) { 
+                        uint64_t d = find_solution(hist, rels, base, n);
+                        if (d != 1) return d;
+                        for (const Bits& old : solutions) {
+                            Bits comb = hist;
+                            xor_into(comb, old);
+                            d = find_solution(comb, rels, base, n);
+                            if (d != 1) return d;
+                        }
+                        solutions.push_back(hist);
+                        break;
+                    }
+                    if (has_pivot[c]) {
+                        xor_into(vec, pivot_vec[c]);
+                        xor_into(hist, pivot_hist[c]);
+                    } else {
+                        has_pivot[c] = true;
+                        pivot_vec[c] = vec;
+                        pivot_hist[c] = hist;
+                        break;
+                    }
                 }
-                
-                uint64_t Y = Y_squared % n;
-                
-                uint64_t delta1 = (X >= Y) ? (X - Y) : (X + (n - Y));
-                uint64_t delta2 = (X + Y) % n;
-                
-                uint64_t d1 = gcd(delta1, n);
-                if (d1 > 1 && d1 < n) return d1;
-                
-                uint64_t d2 = gcd(delta2, n);
-                if (d2 > 1 && d2 < n) return d2;
-                
-                continue;
             }
 
-            last_vec[mod2_vec] = bi_list.size();
-            bi_list.push_back(bi);
-            exp_vec.push_back(whole_vec);
+            uint64_t A_next = (uint64_t)(((unsigned __int128)a * A_cur + A_prev) % n);
+            A_prev = A_cur;
+            A_cur = A_next;
+
+            if (v == 1) break;  
         }
-
-        a_val += step;
+        if (elapsed() > time_limit) return 1;
     }
-
     return 1;
 }
