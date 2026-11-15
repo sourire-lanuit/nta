@@ -5,6 +5,11 @@
 #include <cmath>
 #include <map>
 #include <vector>
+#include <chrono>
+
+constexpr double max_time_sec = 300.0;
+void set_deadline(int seconds);
+bool timed_out();
 
 long long power_mod(long long base, long long exp, long long mod);
 long long perebir(long long alpha, long long beta, long long p);

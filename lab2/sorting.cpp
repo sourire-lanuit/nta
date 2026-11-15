@@ -1,5 +1,15 @@
 #include "Header.h"
 
+static std::chrono::steady_clock::time_point deadline;
+
+void set_deadline(int seconds) {
+    deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+}
+
+bool timed_out() {
+    return std::chrono::steady_clock::now() > deadline;
+}
+
 long long power_mod(long long base, long long exp, long long mod) {
     long long res = 1;
     base = base % mod;
@@ -16,6 +26,7 @@ long long perebir(long long alpha, long long beta, long long p) {
         if (power_mod(alpha, x, p) == beta) {
             return x;
         }
+         if ((x & 0xFFFFF) == 0 && timed_out()) return -2;
     }
     return -1; 
 }
