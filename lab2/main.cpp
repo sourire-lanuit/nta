@@ -83,7 +83,7 @@ int main() {
 
         if (std::cin.fail()) {
             std::cin.clear();
-            // std::cin.ignore(10000, '\n');
+            std::cin.ignore(10000, '\n');
             std::cout << "перевиберіть\n";
             continue;
         }
